@@ -1,0 +1,18 @@
+{
+    "credentials": {
+        "sqlserver": {
+            "database": {
+                "db1": {
+                    "server": "adflabsqlbzeqc.database.windows.net",
+                    "database": "AirlinePerformance-OLTP",
+                    "username": "labadmin",
+                    "password": "Password01!!"
+                } 
+        }           
+        },
+        "EH": {
+            "connstring":  "",
+            "key": ""
+        }
+    }
+}
