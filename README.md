@@ -1,6 +1,6 @@
 ## SQL-to-EH
 
-This repo demos how to get changes from SQL Server published to an EH.  We take the data and then land it to a data lake.  We use python to extract the data every x mins from SQL Server.  The tables we care about are stored in a metadata table that tracks the Change Tracking information.  Every python runs finds the latest changed data since the previous run.  
+This repo demos how to get changes from SQL Server published to an EH.  We take the data and then land it to a data lake.  We use python to extract the data every x mins from SQL Server.  The tables we care about are stored in a metadata table that tracks the Change Tracking information.  Every python run finds the latest changed data since the previous run.  
 
 This is not complete. 
 
@@ -16,13 +16,13 @@ This will NOT do the initial data copy for existing data.  Solutions:
 ## TODO:
 
 * I think this needs a rowcount limiter.  Paging.  How?  EH has 1MBish size limit.  need single message json and not arry of json?
+  * one table's pull is done in 1 batch.  Potentially big batches
 * EH setup scripts
 * initial copy
 * [manual process finding table primary keys needs fixing](./sql/04-updater-queries.sql)
-* one table's pull is done in 1 batch.  Potentially big batches
 * python code:
-  * probably better if this was in a container
-* everything push's to partition 0, put that in the metadata maybe?
+  * probably better if this was in a container and not straight up python due to the sql driver 13/17 issues
+* everything pushes to partition 0, put that in the metadata maybe?
 * multiple rows are sent simulataneiously as array of json.  is that ok?  
 
 
@@ -95,7 +95,7 @@ pip freeze >> requirements.txt
 
 ```
 
-Here's the code:    
+Here's the actual python code:    
 
 [sql2eh.py](./py/sql2eh.py)
 
@@ -114,3 +114,7 @@ python ./py/sql2eh.py
 ## Testing (Running a Consumer)
 
 Easiest way is to go to EH and find the "Process Data" option.  This is a mini Azure Stream Analytics.  Have the consumer run a few times and you should see the output.  The last 3 columns will also show the EvnetProcessedUtcTime, PartitionId, and EventEnqueuedUtcTime.  
+
+It should look like this:
+
+![](./img/asa.png)
