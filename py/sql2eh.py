@@ -51,24 +51,18 @@ print(json_output)
 
 # eh client
 ehAddress=creds['credentials']['EventHub']['connstring']
-sas=creds['credentials']['EventHub']['event-hub-policy-name']
-saskey= creds['credentials']['EventHub']['sas-key']
 
+async def run():
+    producer = EventHubProducerClient.from_connection_string(conn_str=ehAddress)
+    async with producer:
+        event_data_batch = await producer.create_batch()
 
-ehClient = EventHubClient(ehAddress, debug=False, username=sas, password=saskey)
-sender = ehClient.add_sender(partition="0")
-ehClient.run()
-try:
-    start_time = time.time()
-    for i in range(100):
-        print("Sending message: {}".format(i))
-        message = "Message {}".format(i)
-        sender.send(EventData(message))
-except:
-    raise
-finally:
-    end_time = time.time()
-    client.stop()
-    run_time = end_time - start_time
-    logger.info("Runtime: {} seconds".format(run_time))
+        # add our JSON
+        event_data_batch.add(EventData(json_output))
+
+        await producer.send_batch(event_data_batch)
+
+loop = asyncio.get_event_loop()
+loop.run_until_complete(run())
+
 

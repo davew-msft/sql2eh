@@ -104,9 +104,13 @@ Here's the code:
 
 1. Get everything setup above
 2. change any connstrings as needed in `config.json`
-
+3. Run the code. 
 
 ```bash
 python ./py/sql2eh.py
 
 ```
+
+## Testing (Running a Consumer)
+
+Easiest way is to go to EH and find the "Process Data" option.  This is a mini Azure Stream Analytics.  Have the consumer run a few times and you should see the output.  The last 3 columns will also show the EvnetProcessedUtcTime, PartitionId, and EventEnqueuedUtcTime.  
