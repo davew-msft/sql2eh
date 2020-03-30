@@ -15,13 +15,15 @@ This will NOT do the initial data copy for existing data.  Solutions:
 
 ## TODO:
 
+* I think this needs a rowcount limiter.  Paging.  How?  EH has 1MBish size limit.  need single message json and not arry of json?
 * EH setup scripts
 * initial copy
 * [manual process finding table primary keys needs fixing](./sql/04-updater-queries.sql)
 * one table's pull is done in 1 batch.  Potentially big batches
 * python code:
   * probably better if this was in a container
-  * hardcoded connStrings, etc
+* everything push's to partition 0, put that in the metadata maybe?
+* multiple rows are sent simulataneiously as array of json.  is that ok?  
 
 
 ## Setup EH
@@ -83,7 +85,7 @@ sudo apt-get install msodbcsql17
 
 pip install pandas
 pip install --upgrade pyodbc --no-cache-dir
-pip install azure-eventhub==1.3.*
+pip install azure-eventhub
 
 
 pip freeze >> requirements.txt

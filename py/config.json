@@ -10,9 +10,13 @@
                 } 
         }           
         },
-        "EH": {
-            "connstring":  "",
-            "key": ""
+        "EventHub": {
+            "connstring-format": "amqps://<namespace>.servicebus.windows.net/<eventhub>",
+            "connstring":  "amqps://rgDataEngineering.servicebus.windows.net/sql2eh",
+            "event-hub-policy-name-example":"must be on the event hub, not the namespace, with manage",
+            "event-hub-policy-name":"mypolicy",
+            "sas-key": "78k4G4aL26NmSjEtqZQPS7w26H1XDSVnzhooublUzeQ="
+
         }
     }
 }
