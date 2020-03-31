@@ -14,6 +14,7 @@ from azure.eventhub.aio import EventHubProducerClient
 from azure.eventhub import EventData
 
 ehquery = "exec metadata.GetLatestTableData 'dbo','Employee'"
+hwmQuery = "exec metadata.SetLastSyncVersion 'dbo','Employee'"
 path = str(pathlib.Path(__file__).parent.absolute())
 
 # access configurations
@@ -32,6 +33,7 @@ conn = pyodbc.connect(
     user=creds['credentials']['sqlserver']['database']['db1']['username'], \
     password=creds['credentials']['sqlserver']['database']['db1']['password']
     )
+conn.autocommit = True
 
 # helper functions
 def query_db(query, args=(), one=False):
@@ -39,7 +41,7 @@ def query_db(query, args=(), one=False):
     cur.execute(query, args)
     r = [dict((cur.description[i][0], value) \
                for i, value in enumerate(row)) for row in cur.fetchall()]
-    cur.connection.close()
+    cur.close()
     return (r[0] if r else None) if one else r
 
 # eh client
@@ -62,5 +64,15 @@ print(json_output)
 # push to eh
 loop = asyncio.get_event_loop()
 loop.run_until_complete(ehProducer(json_output))
+
+# mark the table as processed
+cur = conn.cursor()
+cur.execute(hwmQuery)
+
+
+
+
+
+
 
 

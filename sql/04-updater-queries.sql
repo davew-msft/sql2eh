@@ -26,11 +26,11 @@ SELECT ''%TABLE%'' as object, base.*
 FROM %TABLE% base
 JOIN (
     SELECT DISTINCT 
-        ID
+        EmpID
     FROM CHANGETABLE (CHANGES %TABLE%, %LastSyncVersion%) chgs
 	WHERE chgs.SYS_CHANGE_OPERATION IN (''I'',''U'')
 ) chgs
-ON base.ID = chgs.ID;
+ON base.EmpID = chgs.EmpID;
 ';
 UPDATE metadata.CTTABLES SET
 	FullPullQuery = @FullPullQuery
@@ -43,11 +43,11 @@ SELECT ''%TABLE%'' as object, base.*
 FROM %TABLE% base
 JOIN (
     SELECT DISTINCT 
-        ID
+        PayrollID
     FROM CHANGETABLE (CHANGES %TABLE%, %LastSyncVersion%) chgs
 	WHERE chgs.SYS_CHANGE_OPERATION IN (''I'',''U'')
 ) chgs
-ON base.ID = chgs.ID;
+ON base.PayrollID = chgs.PayrollID;
 ';
 UPDATE metadata.CTTABLES SET
 	FullPullQuery = @FullPullQuery
