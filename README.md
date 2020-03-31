@@ -17,13 +17,13 @@ This will NOT do the initial data copy for existing data.  Solutions:
 
 * I think this needs a rowcount limiter.  Paging.  How?  EH has 1MBish size limit.  need single message json and not arry of json?
   * one table's pull is done in 1 batch.  Potentially big batches
+  * multiple rows are sent simulataneiously as array of json.  is that ok?  
 * EH setup scripts
-* initial copy
 * [manual process finding table primary keys needs fixing](./sql/04-updater-queries.sql)
 * python code:
   * probably better if this was in a container and not straight up python due to the sql driver 13/17 issues
 * everything pushes to partition 0, put that in the metadata maybe?
-* multiple rows are sent simulataneiously as array of json.  is that ok?  
+
 
 
 ## Setup EH

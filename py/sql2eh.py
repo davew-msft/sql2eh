@@ -13,8 +13,8 @@ import asyncio
 from azure.eventhub.aio import EventHubProducerClient
 from azure.eventhub import EventData
 
-ehquery = "exec metadata.GetLatestTableData 'dbo','Employee'"
-hwmQuery = "exec metadata.SetLastSyncVersion 'dbo','Employee'"
+ehquery = "exec metadata.GetLatestTableData {},{}"
+hwmQuery = "exec metadata.SetLastSyncVersion {},{}"
 path = str(pathlib.Path(__file__).parent.absolute())
 
 # access configurations
@@ -31,7 +31,8 @@ conn = pyodbc.connect(
     database=creds['credentials']['sqlserver']['database']['db1']['database'], \
     trusted_connection='no', \
     user=creds['credentials']['sqlserver']['database']['db1']['username'], \
-    password=creds['credentials']['sqlserver']['database']['db1']['password']
+    password=creds['credentials']['sqlserver']['database']['db1']['password'], \
+    MARS_Connection='Yes'
     )
 conn.autocommit = True
 
@@ -44,6 +45,25 @@ def query_db(query, args=(), one=False):
     cur.close()
     return (r[0] if r else None) if one else r
 
+def processAllTables():
+    curAllItems = conn.cursor()
+    curAllItems.execute("select schemaname, tblname from metadata.CTTABLES where is_enabled = 1;")
+    for row in curAllItems:
+        print("Running {},{}".format(row[0],row[1]))
+        rowsquery = query_db(ehquery.format(row[0],row[1]))
+        json_output = json.dumps(rowsquery, default=str)
+        #print(json_output)
+
+        # push to eh
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(ehProducer(json_output))
+
+        # mark the table as processed
+        curUpdater = conn.cursor()
+        curUpdater.execute(hwmQuery.format(row[0],row[1]))
+
+
+
 # eh client
 async def ehProducer(data):
     producer = EventHubProducerClient.from_connection_string(conn_str=ehAddress)
@@ -55,23 +75,25 @@ async def ehProducer(data):
 
         await producer.send_batch(event_data_batch)
 
-# main
-# get the data from sql 
-rowsquery = query_db(ehquery)
-json_output = json.dumps(rowsquery)
-print(json_output)
+def main(): 
+    # main
+    # get the data from sql 
+    rowsquery = query_db(ehquery)
+    json_output = json.dumps(rowsquery)
+    print(json_output)
 
-# push to eh
-loop = asyncio.get_event_loop()
-loop.run_until_complete(ehProducer(json_output))
+    # push to eh
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(ehProducer(json_output))
 
-# mark the table as processed
-cur = conn.cursor()
-cur.execute(hwmQuery)
+    # mark the table as processed
+    cur = conn.cursor()
+    cur.execute(hwmQuery)
+
+# main()
 
 
-
-
+processAllTables()
 
 
 
