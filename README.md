@@ -4,20 +4,20 @@ This repo demos how to get changes from SQL Server published to an EH.  We take 
 
 This is not complete. 
 
-Assumptions:
+## Assumptions
+
 * all SQL tables need a PK
 * we don't send deletes to EH
 * this is not fully transactional, but it is idempotent and it follows "at-least-once" semantics
+* for initial data loads of a table just set metadata entry to `LastSyncVersion = -1`
+  * note that we will send batches of rows per EH message and that param is set in `sql2eh.py`
+* EH message size is about 1M.  We don't want to send one row/msg nor do we want to send "too many" rows and violate the 1MB limit.  For now this is set to send 10 rows/msg (as array of JSON).  This can be changed.  Perhaps it should be changed in the metadata table so we can set this on a per table basis?  This would solve:
+  * highly active, but narrow tables would be batched up efficiently
+  * huge tables don't risk overflowing a message
 
-This will NOT do the initial data copy for existing data.  Solutions:
-* use ADF or SSIS or similar
-* set each row equal to itself so CT sees it and marks the row for ingestion
 
 ## TODO:
 
-* I think this needs a rowcount limiter.  Paging.  How?  EH has 1MBish size limit.  need single message json and not arry of json?
-  * one table's pull is done in 1 batch.  Potentially big batches
-  * multiple rows are sent simulataneiously as array of json.  is that ok?  
 * EH setup scripts
 * [manual process finding table primary keys needs fixing](./sql/04-updater-queries.sql)
 * python code:
@@ -118,3 +118,6 @@ Easiest way is to go to EH and find the "Process Data" option.  This is a mini A
 It should look like this:
 
 ![](./img/asa.png)
+
+
+Example unit testing items (manual for now) can be found in `metadata.GetLatestTableData`.  
