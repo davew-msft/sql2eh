@@ -11,7 +11,7 @@
         }           
         },
         "EventHub": {
-            "connstring":  "Endpoint=sb://davewdataeng.servicebus.windows.net/;SharedAccessKeyName=mypolicy;SharedAccessKey=78k4G4aL26NmSjEtqZQPS7w26H1XDSVnzhooublUzeQ=;EntityPath=sql2eh"
+            "connstring":  "Endpoint=sb://ehdavew.servicebus.windows.net/;SharedAccessKeyName=me;SharedAccessKey=kbKoDho6+Cg8pxqq1FRiRc/P2W94ZObGRtPADsRoJqM=;EntityPath=stream"
         }
     }
 }

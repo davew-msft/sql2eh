@@ -86,18 +86,17 @@ sudo apt-get install msodbcsql17
 pip install pandas
 pip install --upgrade pyodbc --no-cache-dir
 pip install azure-eventhub
-
+pip uninstall pkg-resources==0.0.0
 
 pip freeze >> requirements.txt
-
-
-
 
 ```
 
 Here's the actual python code:    
 
 [sql2eh.py](./py/sql2eh.py)
+
+If you want to run this from a Docker container, see below.  
 
 
 ## Running the Demo
@@ -121,3 +120,38 @@ It should look like this:
 
 
 Example unit testing items (manual for now) can be found in `metadata.GetLatestTableData`.  
+
+## Dockerized Version
+
+You will need to run this on a machine that has docker installed/running.  
+
+To run the docker container once or to use an external scheduler following this commands:  
+
+```bash
+
+# make sure you are cd'd into the py dir (where the dockerfile is located)
+docker build -t sql2eh:v1.0 .
+docker tag sql2eh:v1.0 sql2eh:latest
+
+# first run 
+docker run \
+  --name sql2eh \
+  sql2eh:latest
+# subsequent runs
+docker start sql2eh
+#docker rm sql2eh
+```
+
+To have an "infinite loop" container that runs sql2eh every 5 minutes then:
+
+```bash
+
+# change the schedule as needed in /py/sql2eh-cron (default is 5 mins)
+docker build -t sql2ehscheduled:v1.0 -f dockerfile-cron .
+docker run \
+  --name sql2ehscheduled \
+  --restart=always \
+  sql2ehscheduled:v1.0 
+#docker stop sql2ehscheduled
+#docker rm sql2ehscheduled
+```

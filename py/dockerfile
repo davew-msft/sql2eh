@@ -1,0 +1,23 @@
+# ----------------base functionality version
+FROM ubuntu:18.04 AS sql2eh
+
+LABEL Dave Wentzel "davew@microsoft.com"
+
+RUN apt-get update -y && \
+    apt-get install -y python3-pip python3-dev curl apt-utils unixodbc unixodbc-dev
+
+RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add -
+RUN curl https://packages.microsoft.com/config/ubuntu/18.04/prod.list > /etc/apt/sources.list.d/mssql-release.list
+RUN apt-get update
+RUN ACCEPT_EULA=Y apt-get install -y --allow-unauthenticated msodbcsql17
+
+COPY . /
+
+WORKDIR /
+
+RUN pip3 install -r requirements.txt
+
+#ENTRYPOINT [ "python3" ]
+
+CMD [ "python3","/sql2eh.py" ]
+
