@@ -20,9 +20,11 @@ This is not complete.
 
 * EH setup scripts
 * [manual process finding table primary keys needs fixing](./sql/04-updater-queries.sql)
-* python code:
-  * probably better if this was in a container and not straight up python due to the sql driver 13/17 issues
 * everything pushes to partition 0, put that in the metadata maybe?
+* smarter batching
+* async batching
+* configure metadata so that there can be multiple python producers, perhaps each can handle a different set of tables or on a different frequency or send to a different partition
+
 
 
 
