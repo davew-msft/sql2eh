@@ -1,36 +1,84 @@
+_master branch is SQL CDC to EH using debezium_  
+_sqlct2eh is SQL CT to EH_ 
+
 ## SQL-to-EH
 
-This repo demos how to get changes from SQL Server published to an EH.  We take the data and then land it to a data lake.  We use python to extract the data every x mins from SQL Server.  The tables we care about are stored in a metadata table that tracks the Change Tracking information.  Every python run finds the latest changed data since the previous run.  
+This repo demos how to get changes from SQL Server published to an EH.  We take the data and then land it to a data lake.  For this branch of the repo we are using SQL Server CDC and the debezium kafka connector.  
 
 This is not complete. 
 
 ## Assumptions
 
-* all SQL tables need a PK
-* we don't send deletes to EH
-* this is not fully transactional, but it is idempotent and it follows "at-least-once" semantics
-* for initial data loads of a table just set metadata entry to `LastSyncVersion = -1`
-  * note that we will send batches of rows per EH message and that param is set in `sql2eh.py`
-* EH message size is about 1M.  We don't want to send one row/msg nor do we want to send "too many" rows and violate the 1MB limit.  For now this is set to send 10 rows/msg (as array of JSON).  This can be changed.  Perhaps it should be changed in the metadata table so we can set this on a per table basis?  This would solve:
-  * highly active, but narrow tables would be batched up efficiently
-  * huge tables don't risk overflowing a message
+* we are using the docker container solution.  This will require docker or k8s when run in a production manner.  
+* your workstation/laptop has docker capabilities.  
+
+## References
+
+* [Microsoft Documentation for debezium with EH](https://github.com/Azure-Samples/azure-sql-db-change-stream-debezium):  this doesn't appear up-to-date with debezium changes.  
+* [Kafka Client with EH](https://nielsberglund.com/2022/01/02/how-to-use-kafka-client-with-azure-event-hubs/):  helpful to understand terminology differences and how to wireup Kafka Connect to EH.
+* [Event Hubs and Stream Analytics](https://github.com/Azure-Samples/streaming-at-scale/tree/main/eventhubs-streamanalytics-azuresql) Once you have the data streaming to EH this is one possible solution to stream the messages to the datalake.  
 
 
-## TODO:
+## **Alternatives to Consider**
 
-* EH setup scripts
-* [manual process finding table primary keys needs fixing](./sql/04-updater-queries.sql)
-* everything pushes to partition 0, put that in the metadata maybe?
-* smarter batching
-* async batching
-* configure metadata so that there can be multiple python producers, perhaps each can handle a different set of tables or on a different frequency or send to a different partition
+* [CDC via pySpark](https://github.com/InterruptSpeed/sql-server-cdc-with-pyspark).  This removes the need for EH/Kafka and keeps the delta table up-to-sync with the source via CDC.  
+* [CDC to EH using "Push" via SQLAgent and .net](https://github.com/rolftesmer/SQLCDC2EventHub):  this isn't true push, but it's closer and should not require any add'l infrastructure to work.  But it will require compiling a .net project and running it from sqlagent.  
+* [sqlserver-cdc-to-kafka](https://github.com/woodlee/sqlserver-cdc-to-kafka).  Thi sis basically roll-your-own Debezium.  
 
 
+kafka connect example:  https://github.com/codingblocks/Batches-to-Streams-with-Apache-Kafka
+
+## Steps
+
+```bash
+# clone this repo
+git clone https://git.davewentzel.com/demos/sql2eh
+cd sql2eh
 
 
-## Setup EH
+```
 
-* need a EH.  
+## Setup SQL
+
+We will use a SQL Server that has CDC enabled.  
+
+I'm just going to create a docker container for this with the necessary steps.  You may not need to do these steps if you have an existing SQL Server.  
+
+```bash
+docker-compose -f docker-compose-sqlserver.yaml up
+
+```
+
+## Setup CDC
+
+```sql
+
+USE testDB
+GO
+EXEC sys.sp_cdc_enable_db
+GO
+
+EXEC sys.sp_cdc_enable_table
+@source_schema = N'dbo',
+@source_name   = N'MyTable',
+@role_name     = N'MyRole',
+@filegroup_name = N'MyDB_CT',
+@supports_net_changes = 1
+GO
+
+EXEC sys.sp_cdc_help_change_data_capture
+GO
+
+--need to ensure sqlagent is running
+EXEC master.dbo.xp_servicecontrol N'QUERYSTATE',N'SQLSERVERAGENT'
+
+```
+
+
+
+## Setup Event Hub
+
+* need a EH
   * Standard
   * everything else is optional.  
   * setup a policy for manage
@@ -43,117 +91,62 @@ Note connstring info here (this must be to the EH _not_ the namespace):
 Mine:  
 `Endpoint=sb://davewdataeng.servicebus.windows.net/;SharedAccessKeyName=mypolicy;SharedAccessKey=78k4G4aL26NmSjEtqZQPS7w26H1XDSVnzhooublUzeQ=;EntityPath=sql2eh`
 
-
-## Setup SQL
-
-We will use a SQL Server that has Change Tracking enabled .  
-
-Here are the sample scripts, adjust accordingly:
-
-* [Create Sample Items](./sql/01-sample.sql) 
-  * these are the objects I'm replicating
-* [Setup SQL](./sql/02-setup-sql.sql)
-  * sets up CT and the metadata objects
-* [Add tables to CT](./sql/03-add-tables.sql)
-  * add your tables that you want to "replicate" to the metadata
-* [Add the Updater queries to the metadata](./sql/04-updater-queries.sql)
-  * this is a manual process for now.  This writes the queries that the python uses to the metadata.  
-  * these queries determine what data has changed since the last time we polled
-* [metadata.GetLatestTableData](metadata.GetLatestTableData.sql)
-  * gets the latest data for the given table
-* [metadata.SetLastSyncVersion](metadata.SetLastSyncVersion.sql)
-
-## Setup Python
-
-This is designed to run on-prem.  It does the following:
-* Connect to SQL
-* figure out what data has changed in the tables specified in the metadata
-* wrap that data into an EH message and push the message
-
-I do everything in bash/wsll/ubuntu, here's the steps:
+Here's the exact process, might be easiest to do this from [CloudShell](https://shell.azure.com/), make sure you specify `bash`.  
 
 ```bash
+# vars to change
+export SUBSCRIPTION=""
+export LOCATION="eastus"
+export RESOURCE_GROUP="rgChEH"
+# this should support at least 10K msgs/sec
+export EVENTHUB_PARTITIONS=12
+export EVENTHUB_CAPACITY=12
+export EVENTHUB_NAMESPACE=$RESOURCE_GROUP"eventhubs"   
+export EVENTHUB_NAME=$PREFIX"in-"$EVENTHUB_PARTITIONS
+export EVENTHUB_CG="debug"
+export EVENTHUB_CAPTURE="False"  # for now, we may want to enable this later
 
-mkdir -p pysql2eh
-cd pysql2eh
-python3.6 -m venv .venv
-source .venv/bin/activate
+az login
+az account list
+az account set --subscription $SUBSCRIPTION
 
-# if this generates errors then 
-# sudo nano /etc/odbcinst.ini
-# clear the file and rerun
-sudo apt-get install msodbcsql17
+az group create -n $RESOURCE_GROUP -l $LOCATION
 
+az eventhubs namespace create \
+  -n $EVENTHUB_NAMESPACE \
+  -g $RESOURCE_GROUP \
+  --sku Standard \
+  --location $LOCATION \
+  --capacity $EVENTHUB_CAPACITY \
+  --enable-kafka "TRUE" \
+  --enable-auto-inflate false \
 
-pip install pandas
-pip install --upgrade pyodbc --no-cache-dir
-pip install azure-eventhub
-pip uninstall pkg-resources==0.0.0
+az eventhubs eventhub create \
+  -n $EVENTHUB_NAME \
+  -g $RESOURCE_GROUP \
+  --message-retention 1 \
+  --partition-count $EVENTHUB_PARTITIONS \
+  --namespace-name $EVENTHUB_NAMESPACE \
+  --enable-capture "$EVENTHUB_CAPTURE" 
+ # --capture-interval 300 \
+ # --capture-size-limit 314572800 \
+ # --archive-name-format 'capture/{Namespace}/{EventHub}/{Year}_{Month}_{Day}_{Hour}_{Minute}_{Second}_{PartitionId}' \
+ # --blob-container streamingatscale \
+ # --destination-name 'EventHubArchive.AzureBlockBlob' \
+ # --storage-account ${AZURE_STORAGE_ACCOUNT_GEN2:-$AZURE_STORAGE_ACCOUNT} \
 
-pip freeze >> requirements.txt
+az eventhubs namespace authorization-rule create \
+  -g $RESOURCE_GROUP \
+  --namespace-name $EVENTHUB_NAMESPACE \
+  --name Listen --rights Listen 
+az eventhubs namespace authorization-rule create \
+  -g $RESOURCE_GROUP \
+  --namespace-name $EVENTHUB_NAMESPACE \
+  --name Send --rights Send 
 
-```
-
-Here's the actual python code:    
-
-[sql2eh.py](./py/sql2eh.py)
-
-If you want to run this from a Docker container, see below.  
-
-
-## Running the Demo
-
-1. Get everything setup above
-2. change any connstrings as needed in `config.json`
-3. Run the code. 
-
-```bash
-python ./py/sql2eh.py
-
-```
-
-## Testing (Running a Consumer)
-
-Easiest way is to go to EH and find the "Process Data" option.  This is a mini Azure Stream Analytics.  Have the consumer run a few times and you should see the output.  The last 3 columns will also show the EvnetProcessedUtcTime, PartitionId, and EventEnqueuedUtcTime.  
-
-It should look like this:
-
-![](./img/asa.png)
-
-
-Example unit testing items (manual for now) can be found in `metadata.GetLatestTableData`.  
-
-## Dockerized Version
-
-You will need to run this on a machine that has docker installed/running.  
-
-To run the docker container once or to use an external scheduler following this commands:  
-
-```bash
-
-# make sure you are cd'd into the py dir (where the dockerfile is located)
-docker build -t sql2eh:v1.0 .
-docker tag sql2eh:v1.0 sql2eh:latest
-
-# first run 
-docker run \
-  --name sql2eh \
-  sql2eh:latest
-# subsequent runs
-docker start sql2eh
-#docker rm sql2eh
-```
-
-To have an "infinite loop" container that runs sql2eh every 5 minutes then:
-
-```bash
-
-# change the schedule as needed in /py/sql2eh-cron (default is 5 mins)
-docker build -t sql2ehscheduled:v1.0 -f dockerfile-cron .
-docker run \
-  --name sql2ehscheduled \
-  --restart=always \
-  sql2ehscheduled:v1.0 
-#docker stop sql2ehscheduled
-#docker rm sql2ehscheduled
+az eventhubs eventhub consumer-group create \
+  -n $EVENTHUB_CG \
+  -g $RESOURCE_GROUP \
+  --eventhub-name $EVENTHUB_NAME \
+  --namespace-name $EVENTHUB_NAMESPACE 
 ```
