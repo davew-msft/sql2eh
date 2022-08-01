@@ -42,3 +42,8 @@ venv.bak/
 __pycache__/
 *.py[cod]
 *$py.class
+
+adventureworks-light.bak
+/sql-container/data
+connstring.txt
+.env
