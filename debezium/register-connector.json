@@ -3,7 +3,7 @@
     "config": {
         "snapshot.mode": "schema_only",
         "connector.class": "io.debezium.connector.sqlserver.SqlServerConnector",
-        "database.hostname": "SS2",
+        "database.hostname": "ch-advw.database.windows.net",
         "database.port": "1433",
         "database.user": "debezium",
         "database.password": "Password01!!",
