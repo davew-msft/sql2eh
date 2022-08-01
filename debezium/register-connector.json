@@ -1,9 +1,9 @@
 {
-    "name": "adv-works",
+    "name": "adv-works-local",
     "config": {
         "snapshot.mode": "schema_only",
         "connector.class": "io.debezium.connector.sqlserver.SqlServerConnector",
-        "database.hostname": "ch-advw.database.windows.net",
+        "database.hostname": "172.24.68.14",
         "database.port": "1433",
         "database.user": "debezium",
         "database.password": "Password01!!",

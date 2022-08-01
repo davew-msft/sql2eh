@@ -38,6 +38,10 @@ cd sql2eh
 
 ```
 
+## Setup vscode with Azure Event Hub Explorer
+
+...so we can view the CDC messages later.  
+
 ## Setup SQL
 
 We will use a SQL Server that has CDC enabled.  
@@ -258,6 +262,24 @@ From the machine running the Debezium container:
 
 curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" http://localhost:8083/connectors/ -d @./register-connector.json -w "\n"
 
+
+```
+
+Now connect to vscode, open the palette and connect to your EH.  Then choose `EventHub: Start Monitoring`.  
+
+Let's simulate a data change:  
+
+```sql
+update HumanResources.Employee SET HireDate = '1/1/2022' WHERE BusinessEntityID = 1;
+
+```
+
+Note the approximate number of seconds it took until you saw the message in the EH monitor in vscode.  
+
+Note what happens when we send 2 changes:
+
+```sql
+update HumanResources.Employee SET HireDate = '1/1/2020' WHERE BusinessEntityID IN (1,2);
 
 ```
 
