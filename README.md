@@ -23,7 +23,7 @@ This is not complete.
 
 * [CDC via pySpark](https://github.com/InterruptSpeed/sql-server-cdc-with-pyspark).  This removes the need for EH/Kafka and keeps the delta table up-to-sync with the source via CDC.  
 * [CDC to EH using "Push" via SQLAgent and .net](https://github.com/rolftesmer/SQLCDC2EventHub):  this isn't true push, but it's closer and should not require any add'l infrastructure to work.  But it will require compiling a .net project and running it from sqlagent.  
-* [sqlserver-cdc-to-kafka](https://github.com/woodlee/sqlserver-cdc-to-kafka).  Thi sis basically roll-your-own Debezium.  
+* [sqlserver-cdc-to-kafka](https://github.com/woodlee/sqlserver-cdc-to-kafka).  This is basically roll-your-own Debezium.  
 
 
 kafka connect example:  https://github.com/codingblocks/Batches-to-Streams-with-Apache-Kafka
@@ -32,7 +32,7 @@ kafka connect example:  https://github.com/codingblocks/Batches-to-Streams-with-
 
 ```bash
 # clone this repo
-git clone https://git.davewentzel.com/demos/sql2eh
+git clone https://github.com/davew-msft/sql2eh
 cd sql2eh
 
 
@@ -45,24 +45,62 @@ We will use a SQL Server that has CDC enabled.
 I'm just going to create a docker container for this with the necessary steps.  You may not need to do these steps if you have an existing SQL Server.  
 
 ```bash
-docker-compose -f docker-compose-sqlserver.yaml up
+
+echo "Downloading AdventureWorks backup file.  We will use this for CDC enablement"
+wget https://github.com/Microsoft/sql-server-samples/releases/download/adventureworks/AdventureWorks2017.bak -O ./sql-container/adventureworks-light.bak -q
+
+cd sql-container
+mkdir -p data
+
+docker build . -t cdc-aw-light 
+
+docker run \
+  --name sqlserver \
+  -p 1433:1433 \
+  -e 'ACCEPT_EULA=Y' \
+  -e 'SA_PASSWORD=Password01!!' \
+  -e 'MSSQL_AGENT_ENABLED=True' \
+  -d cdc-aw-light:latest 
+
+
+# make sure it is running
+docker ps
+
+# ONLY run if you need to cleanup the docker container
+docker stop sqlserver
+docker rm sqlserver
+docker image rm cdc-aw-light:latest
+
+# to restart the docker container later AND maintain all the configuration
+docker start sqlserver
+
 
 ```
 
 ## Setup CDC
 
+We can run these commands from ADS or SSMS or whatever.  The connstring will look similar to this:  
+
+* 127.0.0.1
+* 1433
+* sa/Password01!!
+
+
+
 ```sql
 
-USE testDB
+USE AdventureWorks
+GO
+EXEC sp_changedbowner 'sa'
 GO
 EXEC sys.sp_cdc_enable_db
 GO
 
 EXEC sys.sp_cdc_enable_table
-@source_schema = N'dbo',
-@source_name   = N'MyTable',
-@role_name     = N'MyRole',
-@filegroup_name = N'MyDB_CT',
+@source_schema = N'HumanResources',
+@source_name   = N'Employee',
+@role_name     = N'cdc_role',
+@filegroup_name = null,
 @supports_net_changes = 1
 GO
 
@@ -71,7 +109,6 @@ GO
 
 --need to ensure sqlagent is running
 EXEC master.dbo.xp_servicecontrol N'QUERYSTATE',N'SQLSERVERAGENT'
-
 ```
 
 
@@ -86,16 +123,14 @@ EXEC master.dbo.xp_servicecontrol N'QUERYSTATE',N'SQLSERVERAGENT'
     * debug
     * datalake
 
-Note connstring info here (this must be to the EH _not_ the namespace):
-
-Mine:  
-`Endpoint=sb://davewdataeng.servicebus.windows.net/;SharedAccessKeyName=mypolicy;SharedAccessKey=78k4G4aL26NmSjEtqZQPS7w26H1XDSVnzhooublUzeQ=;EntityPath=sql2eh`
 
 Here's the exact process, might be easiest to do this from [CloudShell](https://shell.azure.com/), make sure you specify `bash`.  
 
+>>Note:  to prevent cloudshell timeouts just run `watch ls` 
+
 ```bash
 # vars to change
-export SUBSCRIPTION=""
+export SUBSCRIPTION="davew demo"
 export LOCATION="eastus"
 export RESOURCE_GROUP="rgChEH"
 # this should support at least 10K msgs/sec
@@ -108,7 +143,7 @@ export EVENTHUB_CAPTURE="False"  # for now, we may want to enable this later
 
 az login
 az account list
-az account set --subscription $SUBSCRIPTION
+az account set --subscription "$SUBSCRIPTION"
 
 az group create -n $RESOURCE_GROUP -l $LOCATION
 
@@ -149,4 +184,91 @@ az eventhubs eventhub consumer-group create \
   -g $RESOURCE_GROUP \
   --eventhub-name $EVENTHUB_NAME \
   --namespace-name $EVENTHUB_NAMESPACE 
+
+az eventhubs namespace authorization-rule keys list \
+  -g $RESOURCE_GROUP \
+  --namespace-name $EVENTHUB_NAMESPACE  \
+  -n RootManageSharedAccessKey \
+  --query "primaryConnectionString" -o tsv
+
+
 ```
+
+Copy the last command's output, that is your connstring:
+
+`Endpoint=sb://rgcheheventhubs.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=DXOhIqXZjr/kA0VtXFJgg60UzcQAwJy3/1qg2gKwgI`
+
+* Copy your connstring into the `./debezium/.env.sample` file and also change `EH_NAME` var.  
+* rename the file to `.env`
+
+
+## Debezium Setup
+
+We will use dbz in docker containers and not VMs.  It's easier.  
+
+Connect to your database and run:
+
+```sql
+USE [master]
+GO
+CREATE LOGIN [debezium] WITH PASSWORD = 'Password01!!'
+GO
+USE [AdventureWorks]
+GO
+CREATE USER [debezium] FROM LOGIN [debezium]
+GO
+ALTER ROLE [db_owner] ADD MEMBER [debezium]
+GO
+
+```
+
+Get the docker containers running.  From your existing bash shell:
+
+```bash
+cd ../debezium
+
+docker-compose up -d 
+
+## watch the logs, looking for errors, etc
+docker-compose logs -f
+# Ctl+C when done
+
+
+```
+
+Let's make sure the container is talking to EH.  From cloudshell:
+
+```bash
+az eventhubs eventhub list -g $RESOURCE_GROUP --namespace $EVENTHUB_NAMESPACE -o table
+
+```
+
+You should see 3 new eventhub "topics" all starting with `debezium`.  
+
+## Setup the Debezium connector
+
+Open [register-connector.json](./debezium/register-connector.json) and make the necessary changes.   
+
+>Note:  `"transforms.Reroute.topic.replacement": "in-12",`  :  that line is the name of your eventhub that YOU created
+
+From the machine running the Debezium container:  
+
+```bash
+
+
+curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" http://localhost:8083/connectors/ -d @./register-connector.json -w "\n"
+
+
+```
+
+## Other Points
+
+To stop debezium:  
+  
+`docker compose down`
+
+To list available connectors:
+
+`curl -i -X GET http://localhost:8083/connectors -w "\n"`  
+`curl -i -X GET -H "Accept:application/json" -H "Content-Type:application/json" http://localhost:8083/connector-plugins/ -w "\n"`  
+
